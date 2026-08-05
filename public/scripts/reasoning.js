@@ -179,7 +179,7 @@ export function extractReasoningSignatureFromData(data, {
     mainApi = null,
     chatCompletionSource = null,
 } = {}) {
-    // Only Gemini models use thought signatures (via MakerSuite/VertexAI or OpenRouter)
+    // Gemini models use thought signatures (via MakerSuite/VertexAI or OpenRouter), Claude uses thinking block signatures
     if ((mainApi ?? main_api) !== 'openai') {
         return null;
     }
@@ -187,9 +187,18 @@ export function extractReasoningSignatureFromData(data, {
     const source = chatCompletionSource ?? oai_settings.chat_completion_source;
     const isGemini = source === chat_completion_sources.MAKERSUITE || source === chat_completion_sources.VERTEXAI;
     const isOpenRouter = source === chat_completion_sources.OPENROUTER;
+    const isClaude = source === chat_completion_sources.CLAUDE;
 
-    if (!isGemini && !isOpenRouter) {
+    if (!isGemini && !isOpenRouter && !isClaude) {
         return null;
+    }
+
+    // Claude format: signature attached to the thinking content block
+    if (isClaude && Array.isArray(data?.content)) {
+        const thinkingBlock = data.content.find(part => part?.type === 'thinking' && part?.signature);
+        if (thinkingBlock) {
+            return thinkingBlock.signature;
+        }
     }
 
     // OpenRouter format: reasoning_details array with type "reasoning.encrypted" (exclude tool calls)

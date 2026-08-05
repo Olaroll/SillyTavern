@@ -365,7 +365,15 @@ async function sendClaudeRequest(request, response) {
         }
 
         if ((fixThinkingPrefill || noPrefillModel) && convertedPrompt.messages.length && convertedPrompt.messages[convertedPrompt.messages.length - 1].role === 'assistant') {
-            convertedPrompt.messages[convertedPrompt.messages.length - 1].role = 'user';
+            const lastMessage = convertedPrompt.messages[convertedPrompt.messages.length - 1];
+            lastMessage.role = 'user';
+            // Thinking blocks are only valid in assistant turns, so drop them if the turn was flipped to user.
+            if (Array.isArray(lastMessage.content)) {
+                lastMessage.content = lastMessage.content.filter(c => c?.type !== 'thinking');
+                if (lastMessage.content.length === 0) {
+                    lastMessage.content.push({ type: 'text', text: '\u200b' });
+                }
+            }
         }
 
         // Verbosity = 'effort' (same values as OpenAI) - only if not already set by adaptive thinking

@@ -261,6 +261,7 @@ export const tool_reasoning_modes = {
 const interleaved_reasoning_providers = [
     chat_completion_sources.OPENROUTER,
     chat_completion_sources.CUSTOM,
+    chat_completion_sources.CLAUDE,
 ];
 
 export const ZAI_ENDPOINT = {
@@ -1064,6 +1065,10 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
 
         if (includeSignature && chatPrompt.signature) {
             chatMessage.signature = chatPrompt.signature;
+            // Claude needs the thinking text alongside the signature to rebuild the thinking block.
+            if (chatPrompt.reasoning) {
+                chatMessage.reasoning = chatPrompt.reasoning;
+            }
         }
 
         if (chatCompletion.canAfford(chatMessage)) {
@@ -3166,6 +3171,14 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
     if (chat_completion_source === chat_completion_sources.CLAUDE) {
         if (show_thoughts) {
             state.reasoning += data?.delta?.thinking || '';
+        }
+        // Capture the thinking block signature, required to replay thinking blocks for interleaved thinking.
+        // Sent as a signature_delta right before the thinking block stops, or on the block itself.
+        if (data?.delta?.type === 'signature_delta' && data?.delta?.signature) {
+            state.signature = data.delta.signature;
+        }
+        if (data?.content_block?.type === 'thinking' && data?.content_block?.signature) {
+            state.signature = data.content_block.signature;
         }
         return data?.delta?.text || '';
     } else if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(chat_completion_source)) {
@@ -6393,7 +6406,9 @@ export function isReasoningSignatureSupported(settings = oai_settings) {
     const isGoogle = [chat_completion_sources.VERTEXAI, chat_completion_sources.MAKERSUITE].includes(settings.chat_completion_source);
     // Need a more crunchy check for OpenRouter: look for Gemini models
     const isOpenRouterGemini = settings.chat_completion_source === chat_completion_sources.OPENROUTER && /google\/gemini/i.test(settings.openrouter_model);
-    return isGoogle || isOpenRouterGemini;
+    // Claude adaptive thinking models: signatures are required to replay thinking blocks for interleaved thinking
+    const isClaudeAdaptive = settings.chat_completion_source === chat_completion_sources.CLAUDE && /claude-(opus-4-6|sonnet-4-6|opus-4-7|opus-4-8|fable)/.test(settings.claude_model);
+    return isGoogle || isOpenRouterGemini || isClaudeAdaptive;
 }
 
 /**

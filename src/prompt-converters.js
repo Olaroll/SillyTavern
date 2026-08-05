@@ -232,6 +232,18 @@ export function convertClaudeMessages(messages, prefillString, useSysPrompt, use
     // Now replace all further messages that have the role 'system' with the role 'user'. (or all if we're not using one)
     const parse = (str) => typeof str === 'string' ? JSON.parse(str) : str;
     messages.forEach((message) => {
+        // Reconstruct the thinking block of an assistant turn for interleaved thinking.
+        // Both the thinking text and its signature are required: the signature is a hash of the text,
+        // so a block with mismatched or missing text will be rejected by the API.
+        const thinkingSignature = typeof message.signature === 'string' && message.signature
+            ? message.signature
+            : (Array.isArray(message.tool_calls) ? message.tool_calls.find(tc => typeof tc?.signature === 'string' && tc.signature)?.signature : null);
+        const thinkingBlock = message.role === 'assistant' && thinkingSignature && typeof message.reasoning === 'string' && message.reasoning
+            ? { type: 'thinking', thinking: message.reasoning, signature: thinkingSignature }
+            : null;
+        delete message.signature;
+        delete message.reasoning;
+
         if (message.role === 'assistant' && message.tool_calls) {
             message.content = message.tool_calls.map((tc) => ({
                 type: 'tool_use',
@@ -304,6 +316,11 @@ export function convertClaudeMessages(messages, prefillString, useSysPrompt, use
 
                 return content;
             });
+        }
+
+        // The thinking block must come first in the content array, before any text or tool_use block.
+        if (thinkingBlock && Array.isArray(message.content)) {
+            message.content.unshift(thinkingBlock);
         }
 
         // Remove offending properties
