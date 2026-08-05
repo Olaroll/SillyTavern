@@ -810,6 +810,13 @@ export function formatWorldInfo(value, { wiFormat = null } = {}) {
 async function populationInjectionPrompts(prompts, messages) {
     let totalInsertedMessages = 0;
 
+    // Injections are anchored to the last user message rather than the end of the chat.
+    // The messages array is in reverse order here (index 0 is the newest message), so this
+    // is the number of messages that chronologically follow the last user message, e.g.
+    // assistant replies, tool calls and tool results. Falls back to 0 if there is no user
+    // message, which preserves anchoring to the end of the chat.
+    const anchorOffset = Math.max(0, messages.findIndex(x => x.role === 'user'));
+
     const roleTypes = {
         'system': extension_prompt_roles.SYSTEM,
         'user': extension_prompt_roles.USER,
@@ -864,7 +871,7 @@ async function populationInjectionPrompts(prompts, messages) {
         }
 
         if (roleMessages.length) {
-            const injectIdx = i + totalInsertedMessages;
+            const injectIdx = anchorOffset + i + totalInsertedMessages;
             messages.splice(injectIdx, 0, ...roleMessages);
             totalInsertedMessages += roleMessages.length;
         }
