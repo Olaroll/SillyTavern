@@ -945,9 +945,12 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
     const canUseTools = ToolManager.isToolCallingSupported();
     const includeSignature = isReasoningSignatureSupported();
     const isToolReasoningProvider = interleaved_reasoning_providers.includes(oai_settings.chat_completion_source);
-    const toolReasoningMode = isToolReasoningProvider
-        ? getEffectiveToolReasoningMode()
-        : tool_reasoning_modes.DISABLED;
+    // Claude can't replay a thinking block from a signature alone: the signature is a hash of the thinking
+    // text, so both must travel together or the block gets dropped. Forwarding is mandatory, not opt-in.
+    const requiresToolReasoning = oai_settings.chat_completion_source === chat_completion_sources.CLAUDE && includeSignature;
+    const toolReasoningMode = requiresToolReasoning
+        ? tool_reasoning_modes.SINCE_LAST_USER
+        : (isToolReasoningProvider ? getEffectiveToolReasoningMode() : tool_reasoning_modes.DISABLED);
     const includeToolReasoning = toolReasoningMode !== tool_reasoning_modes.DISABLED;
     const lastUserIdx = messages.findLastIndex(x => x.role === 'user');
 
@@ -3186,6 +3189,11 @@ export function getStreamingReply(data, state, { chatCompletionSource = null, ov
         }
         if (data?.content_block?.type === 'thinking' && data?.content_block?.signature) {
             state.signature = data.content_block.signature;
+        }
+        // Claude has no per-tool-call signature: the single thinking block of the turn covers every
+        // tool_use block that follows it, so expose it under a turn-level key for the tool call parser.
+        if (state.signature) {
+            state.toolSignatures[ToolManager.TURN_SIGNATURE_KEY] = state.signature;
         }
         return data?.delta?.text || '';
     } else if ([chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI].includes(chat_completion_source)) {

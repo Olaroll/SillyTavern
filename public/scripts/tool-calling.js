@@ -249,6 +249,13 @@ export class ToolManager {
     static #INPUT_DELTA_KEY = '__input_json_delta';
 
     /**
+     * Key used to pass a turn-level thought signature that is not tied to a specific tool call ID.
+     * Claude emits one thinking block per turn, and its signature covers the tool_use blocks that follow it.
+     * @type {string}
+     */
+    static TURN_SIGNATURE_KEY = '__turn_signature';
+
+    /**
      * The maximum number of times to recurse when parsing tool calls.
      * @type {number}
      */
@@ -498,6 +505,13 @@ export class ToolManager {
                 }
                 const targetToolCall = toolCalls[choiceIndex][toolCallIndex];
                 ToolManager.#applyToolCallDelta(targetToolCall, parsed.content_block);
+
+                // Claude emits a single thinking block per turn, whose signature covers the tool_use blocks
+                // that follow it. It arrives before the tool_use block, so it can be attached immediately.
+                const turnSignature = toolSignatures[ToolManager.TURN_SIGNATURE_KEY];
+                if (turnSignature && !targetToolCall.signature) {
+                    targetToolCall.signature = turnSignature;
+                }
             }
         }
         if (typeof parsed?.delta === 'object') {
@@ -696,7 +710,7 @@ export class ToolManager {
         const getRandomId = () => Math.random().toString(36).substring(2);
         const isClaudeToolCall = c => Array.isArray(c) ? c.filter(x => x).every(isClaudeToolCall) : c?.input && c?.name && c?.id;
         const isGoogleToolCall = c => Array.isArray(c) ? c.filter(x => x).every(isGoogleToolCall) : c?.name && c?.args;
-        const convertClaudeToolCall = c => ({ id: c.id, function: { name: c.name, arguments: c.input } });
+        const convertClaudeToolCall = c => ({ id: c.id, function: { name: c.name, arguments: c.input }, ...(c.signature ? { signature: c.signature } : {}) });
         const convertGoogleToolCall = (c, signature = null) => ({ id: getRandomId(), function: { name: c.name, arguments: c.args }, signature });
 
         // Parsed tool calls from streaming data
@@ -743,7 +757,11 @@ export class ToolManager {
 
         // Claude tool calls to OpenAI tool calls
         if (Array.isArray(data?.content)) {
-            const content = data.content.filter(c => c.type === 'tool_use').map(convertClaudeToolCall);
+            // The signature lives on the sibling thinking block of the same turn, not on the tool_use block.
+            const turnSignature = data.content.find(c => c?.type === 'thinking' && c?.signature)?.signature;
+            const content = data.content
+                .filter(c => c.type === 'tool_use')
+                .map(c => convertClaudeToolCall(turnSignature && !c.signature ? { ...c, signature: turnSignature } : c));
 
             if (content) {
                 return content;
