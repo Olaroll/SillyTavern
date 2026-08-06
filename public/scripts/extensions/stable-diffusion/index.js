@@ -69,6 +69,7 @@ export { MODULE_NAME };
 const MODULE_NAME = 'sd';
 // This is a 1x1 transparent PNG
 const PNG_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+const MAX_SEED = 1125899906842624
 
 const sources = {
     extras: 'extras',
@@ -4233,7 +4234,7 @@ async function generateComfyImageCommon(prompt, negativePrompt, signal, basePath
     let workflow = (await workflowResponse.json()).replaceAll('"%prompt%"', JSON.stringify(prompt));
     workflow = workflow.replaceAll('"%negative_prompt%"', JSON.stringify(negativePrompt));
 
-    const seed = extension_settings.sd.seed >= 0 ? extension_settings.sd.seed : Math.round(Math.random() * Number.MAX_SAFE_INTEGER);
+    const seed = extension_settings.sd.seed >= 0 ? extension_settings.sd.seed : Math.round(Math.random() * MAX_SEED);
     workflow = workflow.replaceAll('"%seed%"', JSON.stringify(seed));
 
     const denoising_strength = extension_settings.sd.denoising_strength === undefined ? 1.0 : extension_settings.sd.denoising_strength;
