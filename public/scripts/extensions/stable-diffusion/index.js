@@ -69,7 +69,7 @@ export { MODULE_NAME };
 const MODULE_NAME = 'sd';
 // This is a 1x1 transparent PNG
 const PNG_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-const MAX_SEED = 1125899906842624
+const MAX_SEED = 1125899906842624;
 
 const sources = {
     extras: 'extras',
