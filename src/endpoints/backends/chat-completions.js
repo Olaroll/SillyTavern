@@ -394,6 +394,7 @@ async function sendClaudeRequest(request, response) {
         }
 
         console.debug('Claude request:', requestBody);
+        console.debug('Claude headers:', { ...additionalHeaders });
 
         const generateResponse = await fetch(apiUrl + '/messages', {
             method: 'POST',
