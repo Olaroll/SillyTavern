@@ -889,6 +889,10 @@ export class ToolManager {
         data.forEach(i => {
             i.parameters = tryParse(i.parameters);
             i.result = tryParse(i.result);
+            // Internal plumbing for thinking block replay, not meaningful to the user.
+            // The signature especially is a large opaque blob that buries the actual call details.
+            delete i.signature;
+            delete i.reasoning;
         });
         codeElement.textContent = JSON.stringify(data, null, 2);
         const toolNames = data.map(i => i.displayName || i.name);
