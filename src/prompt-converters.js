@@ -1024,27 +1024,60 @@ export function convertTextCompletionPrompt(messages) {
 }
 
 /**
+ * Checks if a converted Claude message is part of tool call traffic.
+ * After conversion, tool responses carry the 'user' role, so the role alone can't tell them
+ * apart from real user turns: the content blocks are the only reliable signal.
+ * @param {any} message Converted Claude message
+ * @returns {boolean} True if the message is a tool call or a tool result
+ */
+function isClaudeToolTraffic(message) {
+    if (!Array.isArray(message?.content)) {
+        return false;
+    }
+    return message.content.some(c => c?.type === 'tool_use' || c?.type === 'tool_result');
+}
+
+/**
  * Append cache_control object to a Claude messages at depth. Directly modifies the messages array.
+ *
+ * Breakpoints are anchored to the last real user turn instead of the end of the array. An active
+ * tool call chain (and the assistant prefill) sits after that point and is skipped: every tool
+ * round trip adds two role switches, which would otherwise push the breakpoints backwards through
+ * history on every call and invalidate the cache each time. The chain is safe to ignore because
+ * the thinking blocks and tool traffic preceding the last user turn are pruned during conversion,
+ * so any surviving tool traffic belongs to the currently active turn.
+ *
  * @param {any[]} messages Messages to modify
  * @param {number} cachingAtDepth Depth at which caching is supposed to occur
  * @param {string} ttl TTL value
  */
 export function cachingAtDepthForClaude(messages, cachingAtDepth, ttl) {
-    let passedThePrefill = false;
+    // Anchor: the last user message that isn't a tool result. Falls back to the end of the
+    // array if there's no such turn, preserving the previous behavior.
+    let anchorIndex = messages.length - 1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user' && !isClaudeToolTraffic(messages[i])) {
+            anchorIndex = i;
+            break;
+        }
+    }
+
+    //depth here is the number of message role switches
     let depth = 0;
     let previousRoleName = '';
 
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (!passedThePrefill && messages[i].role === 'assistant') {
+    for (let i = anchorIndex; i >= 0; i--) {
+        // Tool traffic must not receive a breakpoint or affect depth counting.
+        if (isClaudeToolTraffic(messages[i])) {
             continue;
         }
-
-        passedThePrefill = true;
 
         if (messages[i].role !== previousRoleName) {
             if (depth === cachingAtDepth || depth === cachingAtDepth + 2) {
                 const content = messages[i].content;
-                content[content.length - 1].cache_control = { type: 'ephemeral', ttl: ttl };
+                if (Array.isArray(content) && content.length > 0) {
+                    content[content.length - 1].cache_control = { type: 'ephemeral', ttl: ttl };
+                }
             }
 
             if (depth === cachingAtDepth + 2) {
@@ -1058,27 +1091,57 @@ export function cachingAtDepthForClaude(messages, cachingAtDepth, ttl) {
 }
 
 /**
+ * Checks if an OpenAI-style message is part of tool call traffic.
+ * On this path tool responses keep the 'tool' role, so they're directly identifiable. Assistant
+ * turns that only exist to carry tool calls are matched by their tool_calls property.
+ * @param {any} message Message to check
+ * @returns {boolean} True if the message is a tool call or a tool response
+ */
+function isOpenAIToolTraffic(message) {
+    if (message?.role === 'tool') {
+        return true;
+    }
+    return message?.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+}
+
+/**
  * Append cache_control headers to an OpenRouter request at depth. Directly modifies the
  * messages array.
+ *
+ * Like the native Claude variant, breakpoints are anchored to the last real user turn so that an
+ * active tool call chain doesn't shift them backwards on every round trip. Tool responses still
+ * carry the 'tool' role here, so they can be told apart from real user turns directly.
+ *
+ * Note: if a non-tools prompt post-processing type is selected, tool responses are folded into
+ * user messages before this runs and become indistinguishable. Anchoring then falls back to the
+ * last user message, which matches the previous behavior.
+ *
  * @param {object[]} messages Array of messages
  * @param {number} cachingAtDepth Depth at which caching is supposed to occur
  * @param {string} ttl TTL value
  */
 export function cachingAtDepthForOpenRouterClaude(messages, cachingAtDepth, ttl) {
-    //caching the prefill is a terrible idea in general
-    let passedThePrefill = false;
+    // Anchor on the last real user turn. This also skips the prefill, since any trailing
+    // assistant message sits after the anchor.
+    let anchorIndex = messages.length - 1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user' && !isOpenAIToolTraffic(messages[i])) {
+            anchorIndex = i;
+            break;
+        }
+    }
+
     //depth here is the number of message role switches
     let depth = 0;
     let previousRoleName = '';
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (!passedThePrefill && messages[i].role === 'assistant') {
+    for (let i = anchorIndex; i >= 0; i--) {
+        // Skip system messages so they don't affect depth counting or receive cache breakpoints
+        if (messages[i].role === 'system') {
             continue;
         }
 
-        passedThePrefill = true;
-
-        // Skip system messages so they don't affect depth counting or receive cache breakpoints
-        if (messages[i].role === 'system') {
+        // Tool traffic must not receive a breakpoint or affect depth counting.
+        if (isOpenAIToolTraffic(messages[i])) {
             continue;
         }
 
