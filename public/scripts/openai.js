@@ -601,6 +601,14 @@ function setOpenAIMessages(chat) {
             continue;
         }
 
+        // A message with no content and no tool calls can't be sent: ChatCompletion.insert skips it.
+        // Dropping it here keeps the token budget, injection depths and cache breakpoints counting
+        // the same messages that actually get sent. Thinking-only assistant turns land here once
+        // their tool call traffic is gone, since the thinking block needs content to ride along with.
+        if (!mes.mes && !mes.extra?.tool_invocations) {
+            continue;
+        }
+
         // 100% legal way to send a message as system
         if (mes.extra?.type === system_message_types.NARRATOR) {
             role = 'system';
@@ -655,6 +663,24 @@ function setOpenAIMessages(chat) {
                     invocations[index] = cloneInvocation;
                 }
             });
+        }
+
+        // A turn that called a tool mid-reply is stored as several chat messages: text, the tool call,
+        // then more text. With the tool call dropped, the remaining halves are adjacent and belong to
+        // the same reply, so join them back into one message. Otherwise an injection can land between
+        // them and split a single reply into an assistant/system/assistant sandwich. Only plain text
+        // merges: anything carrying invocations, media or a signature stays on its own message.
+        const previous = messages[messages.length - 1];
+        const canMerge = previous
+            && previous.role === role
+            && role === 'assistant'
+            && !previous.invocations && !invocations
+            && !previous.media && !media
+            && !previous.signature && !signature
+            && typeof previous.content === 'string' && typeof content === 'string';
+        if (canMerge) {
+            previous.content = [previous.content, content].filter(x => x).join('\n\n');
+            continue;
         }
 
         messages.push({ 'role': role, 'content': content, name: name, 'media': media, 'mediaDisplay': mediaDisplay, 'mediaIndex': mediaIndex, 'invocations': invocations, 'signature': signature, 'reasoning': reasoning });
