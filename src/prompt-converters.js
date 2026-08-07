@@ -229,6 +229,18 @@ export function convertClaudeMessages(messages, prefillString, useSysPrompt, use
         }
     }
 
+    // Index of the latest real user turn. Thinking blocks, signatures and tool call traffic
+    // before this point are stripped: they're only useful for the currently active turn.
+    // This must be computed before the conversion loop below, since that loop rewrites
+    // 'tool' messages into the 'user' role, making real user turns indistinguishable.
+    let latestUserIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+            latestUserIndex = i;
+            break;
+        }
+    }
+
     // Now replace all further messages that have the role 'system' with the role 'user'. (or all if we're not using one)
     const parse = (str) => typeof str === 'string' ? JSON.parse(str) : str;
     messages.forEach((message) => {
@@ -328,6 +340,28 @@ export function convertClaudeMessages(messages, prefillString, useSysPrompt, use
         delete message.tool_calls;
         delete message.tool_call_id;
     });
+
+    // Strip thinking blocks and tool call traffic from everything before the latest user turn.
+    // tool_use and tool_result must be removed together: a tool_use without its matching
+    // tool_result is rejected by the API. Since this covers a contiguous prefix, both halves
+    // of every pair in that range always go at once.
+    if (latestUserIndex > 0) {
+        const strippedTypes = ['thinking', 'redacted_thinking', 'tool_use', 'tool_result'];
+        for (let i = 0; i < latestUserIndex; i++) {
+            if (Array.isArray(messages[i].content)) {
+                messages[i].content = messages[i].content.filter(c => !strippedTypes.includes(c.type));
+            }
+        }
+
+        // Drop messages left with no content. Empty content arrays are rejected, and removing
+        // the former tool_result messages (role 'user') is what lets the assistant turns that
+        // surrounded them become adjacent, so the merge step below can combine them.
+        for (let i = latestUserIndex - 1; i >= 0; i--) {
+            if (Array.isArray(messages[i].content) && messages[i].content.length === 0) {
+                messages.splice(i, 1);
+            }
+        }
+    }
 
     // Images in assistant messages should be moved to the next user message
     for (let i = 0; i < messages.length; i++) {
