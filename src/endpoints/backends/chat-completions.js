@@ -270,7 +270,6 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.system;
         }
         if (useTools) {
-            betaHeaders.push('tools-2024-05-16');
             requestBody.tool_choice = { type: request.body.tool_choice };
             requestBody.tools = request.body.tools
                 .filter(tool => tool.type === 'function')
