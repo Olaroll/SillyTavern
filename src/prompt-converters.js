@@ -1012,12 +1012,12 @@ export function cachingAtDepthForClaude(messages, cachingAtDepth, ttl) {
 
     for (let i = anchorIndex; i >= 0; i--) {
         if (messages[i].role !== previousRoleName) {
-            if (depth === cachingAtDepth || depth === cachingAtDepth + 2) {
+            if (depth === cachingAtDepth || depth === cachingAtDepth + 4) {
                 const content = messages[i].content;
                 content[content.length - 1].cache_control = { type: 'ephemeral', ttl: ttl };
             }
 
-            if (depth === cachingAtDepth + 2) {
+            if (depth === cachingAtDepth + 4) {
                 break;
             }
 
