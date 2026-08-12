@@ -333,17 +333,17 @@ async function sendClaudeRequest(request, response) {
             requestBody.output_config.effort = budgetTokens;
             // top_k is not allowed in adaptive mode
             delete requestBody.top_k;
-        } else if (useThinking && isAdaptiveModel && reasoningEffort === 'auto') {
-            // Adaptive models decide the effort themselves on 'auto', but the thinking block still has to be
-            // requested explicitly: interleaved thinking is only available in adaptive mode. Summaries need
-            // an explicit display request.
-            fixThinkingPrefill = true;
-            requestBody.thinking = { type: 'adaptive' };
-            if (includeReasoning) {
-                requestBody.thinking.display = 'summarized';
-            }
-            // top_k is not allowed in adaptive mode
-            delete requestBody.top_k;
+        // } else if (useThinking && isAdaptiveModel && reasoningEffort === 'auto') {
+        //     // Adaptive models decide the effort themselves on 'auto', but the thinking block still has to be
+        //     // requested explicitly: interleaved thinking is only available in adaptive mode. Summaries need
+        //     // an explicit display request.
+        //     fixThinkingPrefill = true;
+        //     requestBody.thinking = { type: 'adaptive' };
+        //     if (includeReasoning) {
+        //         requestBody.thinking.display = 'summarized';
+        //     }
+        //     // top_k is not allowed in adaptive mode
+        //     delete requestBody.top_k;
         } else if (useThinking && Number.isInteger(budgetTokens)) {
             // Traditional thinking: returns a numeric budget
             fixThinkingPrefill = true;
