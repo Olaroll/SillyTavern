@@ -322,6 +322,8 @@ async function sendClaudeRequest(request, response) {
         const includeReasoning = Boolean(request.body.include_reasoning);
         const budgetTokens = calculateClaudeBudgetTokens(requestBody.max_tokens, reasoningEffort, requestBody.stream, isAdaptiveModel);
 
+        requestBody.thinking = { type: "disabled" };
+
         // Adaptive thinking: returns a string effort level (like Gemini 3)
         if (useThinking && typeof budgetTokens === 'string') {
             fixThinkingPrefill = true;
